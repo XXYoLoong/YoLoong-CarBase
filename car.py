@@ -1,120 +1,116 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+car.py ? ???????????+GUI????
+???
+- GUI ???????? + ????
+- USB ?????????????????
+- ?? A?????? B?????? X???? Y???
+- LT/RT ??????/????
+"""
 import tkinter as tk
 import pygame
 from gpiozero import DigitalOutputDevice
+import time
 
-# —————— 硬件引脚定义 ——————
+# ?????? ?????? ??????
 FL_FWD = DigitalOutputDevice(13); FL_REV = DigitalOutputDevice(19)
 FR_FWD = DigitalOutputDevice(6);  FR_REV = DigitalOutputDevice(5)
 RL_FWD = DigitalOutputDevice(26); RL_REV = DigitalOutputDevice(16)
 RR_FWD = DigitalOutputDevice(12); RR_REV = DigitalOutputDevice(20)
 ALL = [FL_FWD, FL_REV, FR_FWD, FR_REV, RL_FWD, RL_REV, RR_FWD, RR_REV]
 
+# ????
+mode_4wd = True  # True: ?????False: ????
+
 def stop_all():
-    """停止所有通道"""
-    for m in ALL: m.off()
+    """??????"""
+    for m in ALL:
+        m.off()
 
-def drive(v_l, v_r, mode_four=True):
-    """
-    v_l, v_r in [-1,1];
-    mode_four=True 四轮模式；False 节能模式（仅 FL & RR）
-    """
+# ???????v_l, v_r ?[-1,1]
+def drive(v_l, v_r):
     stop_all()
-    def apply(side, v):
-        if v>0:
-            side[0].on()
-        elif v<0:
-            side[1].on()
-    if mode_four:
-        apply((FL_FWD, FL_REV), v_l); apply((RL_FWD, RL_REV), v_l)
-        apply((FR_FWD, FR_REV), v_r); apply((RR_FWD, RR_REV), v_r)
+    def apply(fwd, rev, val):
+        if val > 0.1:
+            fwd.on()
+        elif val < -0.1:
+            rev.on()
+    if mode_4wd:
+        apply(FL_FWD, FL_REV, v_l); apply(RL_FWD, RL_REV, v_l)
+        apply(FR_FWD, FR_REV, v_r); apply(RR_FWD, RR_REV, v_r)
     else:
-        # 节能：仅前左 + 后右
-        apply((FL_FWD, FL_REV), v_l)
-        apply((RR_FWD, RR_REV), v_r)
+        apply(FL_FWD, FL_REV, v_l)
+        apply(RR_FWD, RR_REV, v_r)
 
-# —————— 主程序 ——————
+# ?????? ?? ??????
 class CarApp:
     def __init__(self):
-        # GUI
-        self.root = tk.Tk(); self.root.title("4WD 控制 (Hand+GUI)")
-        # 滑块: Throttle & Turn
-        tk.Label(self.root, text="Throttle").grid(row=0, column=0)
-        self.throttle = tk.DoubleVar(); tk.Scale(self.root, variable=self.throttle,
-            from_=1.0, to=-1.0, resolution=0.01, orient=tk.VERTICAL, length=150
-        ).grid(row=1, column=0)
-        tk.Label(self.root, text="Turn").grid(row=0, column=1)
-        self.turn = tk.DoubleVar(); tk.Scale(self.root, variable=self.turn,
-            from_=-1.0, to=1.0, resolution=0.01, orient=tk.VERTICAL, length=150
-        ).grid(row=1, column=1)
-        # 模式按钮
-        self.mode_four = True
-        self.btn_mode = tk.Button(self.root, text="Mode:4WD", command=self.toggle_mode)
-        self.btn_mode.grid(row=2, column=0, columnspan=2, pady=5)
-        # STOP 按钮
-        tk.Button(self.root, text="STOP", bg="#f44", fg="white",
-                  command=lambda: self.set_axes(0,0), width=10).grid(row=3, column=0, columnspan=2)
-
-        # 初始化 pygame 手柄
+        # Tkinter GUI ??
+        self.root = tk.Tk(); self.root.title("4WD Car Control")
+        # ?? Canvas
+        self.canvas = tk.Canvas(self.root, width=200, height=200, bg='#eee')
+        self.canvas.grid(row=0, column=0, columnspan=2)
+        # ??????
+        self.pad = self.canvas.create_oval(10,10,190,190,outline='#333')
+        self.knob = self.canvas.create_oval(90,90,110,110,fill='#555')
+        # ??
+        self.btn_A = tk.Button(self.root, text='A:Forward', command=lambda: self.quick(1,0))
+        self.btn_B = tk.Button(self.root, text='B:Spin',    command=lambda: self.quick(0,1))
+        self.btn_X = tk.Button(self.root, text='X:Stop',    command=lambda: self.quick(0,0))
+        self.btn_LT= tk.Button(self.root, text='LT:4WD',    command=self.set_4wd)
+        self.btn_RT= tk.Button(self.root, text='RT:Eco',    command=self.set_eco)
+        for i,btn in enumerate([self.btn_A,self.btn_B,self.btn_X,self.btn_LT,self.btn_RT]):
+            btn.grid(row=1+i//2, column=i%2, padx=5, pady=5)
+        # ????
+        self.throttle=0; self.turn=0
+        # ??? Pygame ??
         pygame.init(); pygame.joystick.init()
         self.joy = pygame.joystick.Joystick(0) if pygame.joystick.get_count()>0 else None
-        if self.joy:
-            self.joy.init()
-        # 按键映射
-        self.BTN_A, self.BTN_B, self.BTN_X = 0,1,2
-        self.BTN_LT, self.BTN_RT = 4,5
-
-        # 周期调用
+        if self.joy: self.joy.init()
+        # ????
         self.update()
-
-        # 关闭时
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.root.mainloop()
 
-    def toggle_mode(self):
-        """切换四轮/节能"""
-        self.mode_four = not self.mode_four
-        self.btn_mode.config(text="Mode:4WD" if self.mode_four else "Mode:Eco")
+    def set_4wd(self):
+        global mode_4wd; mode_4wd=True
 
-    def set_axes(self, t, r):
-        """外部快捷设定"""
-        self.throttle.set(t); self.turn.set(r)
+    def set_eco(self):
+        global mode_4wd; mode_4wd=False
+
+    def quick(self, t, r):
+        """????/??/??"""
+        self.throttle, self.turn = t, r
+        self.apply()
+
+    def apply(self):
+        v_l = max(-1, min(1, self.throttle + self.turn))
+        v_r = max(-1, min(1, self.throttle - self.turn))
+        drive(v_l, v_r)
+        # GUI ??????
+        x = 100 + self.turn * 80; y = 100 - self.throttle * 80
+        self.canvas.coords(self.knob, x-10, y-10, x+10, y+10)
 
     def update(self):
-        """定时读 GUI + 手柄，共同驱动"""
-        # 1. GUI 滑块优先
-        t = self.throttle.get(); r = self.turn.get()
-
-        # 2. 手柄输入覆盖
+        # ??????
         if self.joy:
             pygame.event.pump()
-            x = self.joy.get_axis(0)      # 左摇杆左右
-            y = -self.joy.get_axis(1)     # 左摇杆上下 (反转)
-            t, r = y, x
-            # 按键快捷
-            if self.joy.get_button(self.BTN_A):
-                t, r = 1, 0
-            if self.joy.get_button(self.BTN_B):
-                t, r = 0, 1
-            if self.joy.get_button(self.BTN_X):
-                t, r = 0, 0
-            # 模式切换
-            if self.joy.get_button(self.BTN_LT):
-                self.mode_four = True; self.btn_mode.config(text="Mode:4WD")
-            if self.joy.get_button(self.BTN_RT):
-                self.mode_four = False; self.btn_mode.config(text="Mode:Eco")
-
-        # 差速计算并驱动
-        v_l = max(-1, min(1, t + r)); v_r = max(-1, min(1, t - r))
-        drive(v_l, v_r, self.mode_four)
-
-        # 20ms 后再调用
-        self.root.after(20, self.update)
+            self.turn = self.joy.get_axis(0)  # ??? X
+            self.throttle = -self.joy.get_axis(1)  # ??? Y
+            # ????
+            if self.joy.get_button(0): self.quick(1,0)
+            elif self.joy.get_button(1): self.quick(0,1)
+            elif self.joy.get_button(2): self.quick(0,0)
+            if self.joy.get_button(4): self.set_4wd()
+            if self.joy.get_button(5): self.set_eco()
+        self.apply()
+        self.root.after(50, self.update)
 
     def on_close(self):
         stop_all()
         if self.joy: pygame.quit()
         self.root.destroy()
 
-if __name__=="__main__":
-    CarApp().root.mainloop()
+if __name__=='__main__':
+    CarApp()
