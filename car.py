@@ -35,6 +35,11 @@ def stop_all():
     for m in ALL:
         m.off()
 
+    # —————— 方向补偿函数 ——————
+def compensate(val, is_rear=False):
+    """后轮方向需要反转补偿"""
+    return -val if is_rear else val
+
 # —————— 差速驱动函数 ——————
 def drive(v_l, v_r):
     """
@@ -59,15 +64,17 @@ def drive(v_l, v_r):
         # |val| <0.1 时不驱动，保持停止
 
     if mode_4wd:
-        # 四轮驱动：前后轮同步，但后轮逻辑方向需要取反
-        apply(FL_FWD, FL_REV, v_l)  # 前左
-        apply(RL_FWD, RL_REV, -v_l)  # 后左
-        apply(FR_FWD, FR_REV, v_r)  # 前右
-        apply(RR_FWD, RR_REV, -v_r)  # 后右
+        # 左侧：前左 & 后左（后轮方向补偿）
+        apply(FL_FWD, FL_REV, compensate(v_l, is_rear=False))  # 前左
+        apply(RL_FWD, RL_REV, compensate(v_l, is_rear=True))  # 后左
+
+        # 右侧：前右 & 后右（后轮方向补偿）
+        apply(FR_FWD, FR_REV, compensate(v_r, is_rear=False))  # 前右
+        apply(RR_FWD, RR_REV, compensate(v_r, is_rear=True))  # 后右
     else:
-        # 节能模式：仅驱动前左与后右（也需考虑方向）
-        apply(FL_FWD, FL_REV, v_l)
-        apply(RR_FWD, RR_REV, -v_r)
+        # 节能模式：仅驱动前左 & 后右（后轮方向补偿）
+        apply(FL_FWD, FL_REV, compensate(v_l, is_rear=False))  # 前左
+        apply(RR_FWD, RR_REV, compensate(v_r, is_rear=True))  # 后右
 
 
 # —————— 主应用类，包含 GUI 与手柄交互 ——————
