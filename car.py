@@ -39,6 +39,7 @@ class MotorPair:
 class Chassis:
     """底盘控制类，管理四轮驱动逻辑与节能模式切换"""
     def __init__(self):
+        self.use_joystick = True  # 初始默认使用 手柄 控制
         self.mode_4wd = True  # 默认为标准四驱
         self.motors = {
             'FL': MotorPair(13, 19, 'FL'),
@@ -145,9 +146,11 @@ class CarApp:
         self.apply()
 
     def on_press(self, e):
+        self.use_joystick = False
         self.calc_axes(e.x, e.y)
 
     def on_drag(self, e):
+        self.use_joystick = False
         self.calc_axes(e.x, e.y)
 
     def calc_axes(self, x, y):
@@ -163,27 +166,33 @@ class CarApp:
         self.apply()
 
     def apply(self):
-        """根据 throttle/turn 更新图形与驱动信号"""
-        x = 100 + self.turn * 80
-        y = 100 - self.throttle * 80
-        self.canvas.coords(self.knob, x-5, y-5, x+5, y+5)
+        if not self.use_joystick:
+            # 鼠标控制下刷新 knob 位置
+            x = 100 + self.turn * 80
+            y = 100 - self.throttle * 80
+            self.canvas.coords(self.knob, x - 5, y - 5, x + 5, y + 5)
+
+        # 统一驱动输出
         v_l = max(-1, min(1, self.throttle + self.turn))
         v_r = max(-1, min(1, self.throttle - self.turn))
         self.chassis.drive(v_l, v_r)
 
     def update(self):
-        """50ms 更新一次手柄输入"""
         if self.joy:
             pygame.event.pump()
             lx = self.joy.get_axis(0)
             ly = -self.joy.get_axis(1)
-            self.throttle, self.turn = ly, lx
-            if self.joy.get_button(0): self.quick(1, 0)
-            if self.joy.get_button(1): self.quick(0, 1)
-            if self.joy.get_button(2): self.quick(0, 0)
-            if self.joy.get_button(4): self.chassis.set_mode(True)
-            if self.joy.get_button(5): self.chassis.set_mode(False)
-            self.apply()
+
+            # 若手柄输入变化较大则激活
+            if abs(lx) > 0.05 or abs(ly) > 0.05 or any(self.joy.get_button(i) for i in [0, 1, 2, 4, 5]):
+                self.use_joystick = True
+                self.throttle, self.turn = ly, lx
+                if self.joy.get_button(0): self.quick(1, 0)
+                if self.joy.get_button(1): self.quick(0, 1)
+                if self.joy.get_button(2): self.quick(0, 0)
+                if self.joy.get_button(4): self.chassis.set_mode(True)
+                if self.joy.get_button(5): self.chassis.set_mode(False)
+                self.apply()
         self.root.after(50, self.update)
 
     def on_close(self):
