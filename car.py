@@ -59,15 +59,16 @@ def drive(v_l, v_r):
         # |val| <0.1 时不驱动，保持停止
 
     if mode_4wd:
-        # 四轮驱动：左右侧两轮同速
+        # 四轮驱动：前后轮同步，但后轮逻辑方向需要取反
         apply(FL_FWD, FL_REV, v_l)  # 前左
-        apply(RL_FWD, RL_REV, v_l)  # 后左
+        apply(RL_FWD, RL_REV, -v_l)  # 后左
         apply(FR_FWD, FR_REV, v_r)  # 前右
-        apply(RR_FWD, RR_REV, v_r)  # 后右
+        apply(RR_FWD, RR_REV, -v_r)  # 后右
     else:
-        # 节能模式：仅驱动前左与后右两轮
+        # 节能模式：仅驱动前左与后右（也需考虑方向）
         apply(FL_FWD, FL_REV, v_l)
-        apply(RR_FWD, RR_REV, v_r)
+        apply(RR_FWD, RR_REV, -v_r)
+
 
 # —————— 主应用类，包含 GUI 与手柄交互 ——————
 class CarApp:
@@ -184,7 +185,7 @@ class CarApp:
             pygame.event.pump()
             # 读取左摇杆
             lx = self.joy.get_axis(0)  # 左右
-            ly = -self.joy.get_axis(1) # 上下反向
+            ly = self.joy.get_axis(1)  # 上下
             self.throttle, self.turn = ly, lx
             # 按键 A/B/X
             if self.joy.get_button(0):  # A 键
